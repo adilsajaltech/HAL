@@ -70,6 +70,8 @@ class Question(TimeStampModel):
     body = models.TextField()
     tags = models.ManyToManyField('Tag', related_name='questions')
     views_count = models.IntegerField(default=0)
+    upvotes = models.PositiveIntegerField(default=0)
+    downvotes = models.PositiveIntegerField(default=0)
 
     def __str__(self):
         return self.title
@@ -80,6 +82,8 @@ class Answer(TimeStampModel):
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='answers')
     body = models.TextField()
     is_accepted = models.BooleanField(default=False)
+    upvotes = models.PositiveIntegerField(default=0)
+    downvotes = models.PositiveIntegerField(default=0)
 
     def __str__(self):
         return f'Answer to {self.question.title}'
