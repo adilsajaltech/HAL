@@ -106,3 +106,23 @@ class Tag(TimeStampModel):
     def __str__(self):
         return self.name
     
+
+
+class Flag(TimeStampModel):
+    FLAG_TYPES = [
+        ('SPAM', 'Spam'),
+        ('INAPPROPRIATE', 'Inappropriate'),
+        ('OFF_TOPIC', 'Off-Topic'),
+        ('OTHER', 'Other'),
+    ]
+
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='flags')
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, null=True, blank=True, related_name='flags')
+    answer = models.ForeignKey(Answer, on_delete=models.CASCADE, null=True, blank=True, related_name='flags')
+    comment = models.ForeignKey(Comment, on_delete=models.CASCADE, null=True, blank=True, related_name='flags')
+    reason = models.CharField(choices=FLAG_TYPES, max_length=20)
+    description = models.TextField(null=True, blank=True)  # Additional information about the flag
+    resolved = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f'Flag by {self.user.email} on {self.reason}'
