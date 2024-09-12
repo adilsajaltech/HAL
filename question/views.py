@@ -9,11 +9,14 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from rest_framework.views import APIView
 from rest_framework import status
+import reversion
+from reversion.models import Version
 
 @method_decorator(csrf_exempt, name='dispatch')
 class CreateQuestionView(APIView):
     permission_classes = [IsAuthenticated]
     
+    @reversion.create_revision()
     def post(self, request, *args, **kwargs):
         if not request.user.is_authenticated:
             return JsonResponse({'error': 'User must be logged in to create a question'}, status=403)
@@ -35,6 +38,105 @@ class CreateQuestionView(APIView):
         question.save()
 
         return JsonResponse({'message': 'Question created successfully', 'question_id': question.id}, status=201)
+    
+#==================================ADIL================================================================================
+
+@method_decorator(csrf_exempt, name='dispatch')
+class UpdateQuestionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @reversion.create_revision()
+    def post(self, request, pk, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return JsonResponse({'error': 'User must be logged in to update a question'}, status=403)
+        
+        data = json.loads(request.body)
+        # question_id = data.get('question_id')
+        title = data.get('title')
+        body = data.get('body')
+        tags = data.get('tags', [])
+
+        if title is None and body is None and not tags:
+            return JsonResponse({'error': 'Tags, title, and body are required'}, status=400)
+
+        question = get_object_or_404(Question, pk=pk)
+
+        # Ensure that only the author can update the question
+        if question.user != request.user:
+            return JsonResponse({'error': 'You are not authorized to update this question'}, status=403)
+
+        if title is not None:
+            question.title = title
+        if body is not None:
+            question.body = body
+
+        # Update tags
+        if tags is not None:
+            tag_objects = []
+            for tag in tags:
+                tag_obj, _ = Tag.objects.get_or_create(name=tag)
+                tag_objects.append(tag_obj)  
+            question.tags.set(tag_objects)
+        question.save()
+
+        return JsonResponse({'message': 'Question updated successfully'}, status=200)
+
+class GetQuestionVersionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk, vid, *args, **kwargs):
+        # Fetch the question object
+        question = get_object_or_404(Question, pk=pk)
+        
+        # Retrieve the specific version
+        try:
+            # Fetch version data for the specific question and version_id
+            version = reversion.get_for_object(question).get(id=vid)
+        except reversion.Version.DoesNotExist:
+            return JsonResponse({'error': 'Version not found'}, status=404)
+
+        # Format the version data
+        question_data = {
+            'id': version.object_id,
+            'title': version.field_dict.get('title'),
+            'body': version.field_dict.get('body'),
+            'tags': list(version.field_dict.get('tags', [])),
+            'views_count': version.field_dict.get('views_count'),
+            'upvotes': version.field_dict.get('upvotes'),
+            'downvotes': version.field_dict.get('downvotes'),
+        }
+        return JsonResponse(question_data)
+    
+class GetAllVersionsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk, *args, **kwargs):
+        # Fetch the question object
+        question = get_object_or_404(Question, pk=pk)
+
+        # Retrieve all versions for the specific question
+        versions = Version.objects.get_for_object(question)
+        
+        # Format the version data
+        versions_data = []
+        for version in versions:
+            revision = version.revision
+            versions_data.append({
+                'version_id': version.id,
+                'revision_id': revision.id if revision else None,  # Revision ID
+                'date_created': revision.date_created if revision else None,  # Date created from revision
+                'title': version.field_dict.get('title'),
+                'body': version.field_dict.get('body'),
+                'tags': list(version.field_dict.get('tags', [])),
+                'views_count': version.field_dict.get('views_count'),
+                'upvotes': version.field_dict.get('upvotes'),
+                'downvotes': version.field_dict.get('downvotes'),
+            })
+
+        return JsonResponse({'versions': versions_data})
+
+
+#==================================ADIL================================================================================
 
 @method_decorator(csrf_exempt, name='dispatch')
 class QuestionDetailView(APIView):
