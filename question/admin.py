@@ -12,7 +12,15 @@ class FlagAdmin(admin.ModelAdmin):
 class QuestionAdmin(VersionAdmin):
     pass
 
+@admin.register(Answer)
+class AnswerAdmin(VersionAdmin):
+    pass
+
+@admin.register(Comment)
+class CommentAdmin(VersionAdmin):
+    pass
+
 # admin.site.register(Question)
-admin.site.register(Answer)
+# admin.site.register(Answer)
 admin.site.register(Tag)
-admin.site.register(Comment)
+# admin.site.register(Comment)

@@ -3,7 +3,7 @@ from profanity_check import predict
 import re
 import defusedxml.ElementTree as ET
 import guardrails as gr
-from guardrails.validators import Validator
+# from guardrails.validators import Validator
 
 def validate_no_contact_info(content, user):
 
@@ -11,13 +11,14 @@ def validate_no_contact_info(content, user):
     if predict([content])[0] == 1:
         raise ValidationError("Content contains inappropriate language.")
 
-    if user.is_superuser or user.is_premium:
+    if user.is_superuser:# or user.is_premium:
         return  # Skip validation for premium or superusers
 
     # Regular expressions for phone numbers, emails, and URLs
     phone_regex = re.compile(r'(\+?\d[\d -]{8,}\d)')
     email_regex = re.compile(r'\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b', re.IGNORECASE)
-    url_regex = re.compile(r'(https?://[^\s]+)')
+    url_regex = re.compile(r'https?://(?:www\.)?(?:[a-zA-Z0-9\-]+\s*\.\s*)+[a-zA-Z]{2,}(?:[^\s]*)')
+    url_regex2 = re.compile(r'www\.(?:[a-zA-Z0-9\-]+\s*\.\s*)+[a-zA-Z]{2,}(?:[^\s]*)')
     
     # Check for phone numbers, emails, and URLs
     if phone_regex.search(content):
@@ -25,6 +26,8 @@ def validate_no_contact_info(content, user):
     if email_regex.search(content):
         raise ValidationError("Content cannot contain email addresses.")
     if url_regex.search(content):
+        raise ValidationError("Content cannot contain website URLs.")
+    if url_regex2.search(content):
         raise ValidationError("Content cannot contain website URLs.")
     
 

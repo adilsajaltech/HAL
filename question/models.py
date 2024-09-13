@@ -41,6 +41,8 @@ class Comment(TimeStampModel):
     content = models.TextField()
     question = models.ForeignKey(Question, on_delete=models.CASCADE, null=True, blank=True, related_name='comments')
     answer = models.ForeignKey(Answer, on_delete=models.CASCADE, null=True, blank=True, related_name='comments')
+    upvotes = models.PositiveIntegerField(default=0)
+    downvotes = models.PositiveIntegerField(default=0)
 
     def __str__(self):
         return f'Comment by {self.user.email}'
@@ -73,3 +75,18 @@ class Flag(TimeStampModel):
 
     def __str__(self):
         return f'Flag by {self.user.email} on {self.reason}'
+    
+class Vote(models.Model):
+    VOTE_TYPE_CHOICES = [
+        ('UPVOTE', 'Upvote'),
+        ('DOWNVOTE', 'Downvote'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, null=True, blank=True, related_name='votes')
+    answer = models.ForeignKey(Answer, on_delete=models.CASCADE, null=True, blank=True, related_name='votes')
+    comment = models.ForeignKey(Comment, on_delete=models.CASCADE, null=True, blank=True, related_name='votes')
+    vote_type = models.CharField(max_length=10, choices=VOTE_TYPE_CHOICES)
+
+    class Meta:
+        unique_together = ('user', 'question', 'answer', 'comment', 'vote_type')
