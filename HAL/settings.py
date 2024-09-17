@@ -39,7 +39,8 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'user',
     'question',
-    'rest_framework'
+    'rest_framework',
+    'django_elasticsearch_dsl'
 ]
 
 MIDDLEWARE = [
@@ -136,3 +137,9 @@ REST_FRAMEWORK = {
 }
 
 APPEND_SLASH = True
+
+ELASTICSEARCH_DSL = {
+    'default': {
+        'hosts': 'http://localhost:9200'  # Elasticsearch host
+    },
+}
