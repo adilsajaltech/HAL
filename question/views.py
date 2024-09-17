@@ -938,10 +938,10 @@ class AnswerQuestionView(APIView):
         answer = Answer.objects.create(user=request.user, question=question, body=body)
         
 
-        # # Increase reputation for answering the question
-        # profile = get_object_or_404(Profile, user=request.user)
-        # profile.reputation += 10
-        # profile.save()
+        # Increase reputation for answering the question
+        profile = get_object_or_404(Profile, user=request.user)
+        profile.reputation += 10
+        profile.save()
 
 
         return JsonResponse({'message': 'Answer created successfully', 'answer_id': answer.id}, status=201)
