@@ -1100,3 +1100,56 @@ class DownvoteAnswerView(APIView):
 
 #======================= Answer BLOCK ===================================================================================================
 
+@method_decorator(csrf_exempt, name='dispatch')
+class DeleteQuestionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return JsonResponse({'error': 'User must be logged in to delete a question'}, status=403)
+
+        question = get_object_or_404(Question, pk=pk)
+
+        # Ensure that only the author or admin can delete the question
+        if question.user != request.user:
+            return JsonResponse({'error': 'You are not authorized to delete this question'}, status=403)
+
+        question.delete()
+
+        return JsonResponse({'message': 'Question deleted successfully'}, status=200)
+    
+@method_decorator(csrf_exempt, name='dispatch')
+class DeleteAnswerView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return JsonResponse({'error': 'User must be logged in to delete a answer'}, status=403)
+
+        question = get_object_or_404(Answer, pk=pk)
+
+        # Ensure that only the author or admin can delete the question
+        if question.user != request.user:
+            return JsonResponse({'error': 'You are not authorized to delete this answer'}, status=403)
+
+        question.delete()
+
+        return JsonResponse({'message': 'Answer deleted successfully'}, status=200)
+    
+@method_decorator(csrf_exempt, name='dispatch')
+class DeleteCommentView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return JsonResponse({'error': 'User must be logged in to delete a comment'}, status=403)
+
+        question = get_object_or_404(Comment, pk=pk)
+
+        # Ensure that only the author or admin can delete the question
+        if question.user != request.user:
+            return JsonResponse({'error': 'You are not authorized to delete this comment'}, status=403)
+
+        question.delete()
+
+        return JsonResponse({'message': 'Comment deleted successfully'}, status=200)

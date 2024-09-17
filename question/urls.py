@@ -21,7 +21,10 @@ from .views import (
     DownvoteQuestionView,
     UpvoteCommentView,
     DownvoteCommentView,
-    UpdateCommentView
+    UpdateCommentView,
+    DeleteQuestionView,
+    DeleteAnswerView,
+    DeleteCommentView
 )
 
 urlpatterns = [
@@ -51,6 +54,10 @@ urlpatterns = [
     path('get-all-answers/', UserAnswersView.as_view(), name='get-all-answers'),
     path('get-all-comments/', UserCommentsView.as_view(), name='get-all-comments'),
 
+
+    path('question-delete/<int:pk>/', DeleteQuestionView.as_view(), name='delete-question'),
+    path('answer-delete/<int:pk>/', DeleteAnswerView.as_view(), name='delete-answer'),
+    path('comment-delete/<int:pk>/', DeleteCommentView.as_view(), name='delete-comment'),
 
     path('flag-content/', FlagContentView.as_view(), name='flag-content'),
 
