@@ -14,6 +14,8 @@ from reversion.models import Version
 from .content_management.serializer import FlagSerializer, QuestionSerializer, AnswerSerializer, CommentSerializer
 from .content_management.validators import validate_no_contact_info, validate_for_malicious_content
 from django_ratelimit.decorators import ratelimit
+from django.db.models import Q
+from user.models import Profile
 
 # Define the rate limit handler
 def handle_ratelimit(request, exception):
@@ -58,6 +60,11 @@ class CreateQuestionView(APIView):
             
         question.tags.set(tag_objects)
         question.save()
+
+        # Increase reputation for creating the question
+        profile = get_object_or_404(Profile, user=request.user)
+        profile.reputation += 20  # Reward for creating a question
+        profile.save()
 
         return JsonResponse({'message': 'Question created successfully', 'question_id': question.id}, status=201)
     
@@ -356,6 +363,554 @@ class QuestionDetailView(APIView):
 
         return JsonResponse(response_data, status=200)
 
+# @method_decorator(csrf_exempt, name="dispatch")
+# @method_decorator(ratelimit(key='user', rate='15/h', method='POST', block=True), name='dispatch')
+# class AnswerQuestionView(APIView):
+#     permission_classes = [IsAuthenticated]
+
+#     @reversion.create_revision()
+#     def post(self, request, pk, *args, **kwargs):
+#         if not request.user.is_authenticated:
+#             return JsonResponse({'error': 'User must be logged in to create a question'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+#         question = get_object_or_404(Question, pk=pk)
+#         data = json.loads(request.body)
+#         body = data.get('body')
+
+#         if not body:
+#             return JsonResponse({'error': 'Answer body is required'}, status=400)
+        
+#         try:
+#             if body:
+#                 validate_no_contact_info(body,user=request.user)
+#                 validate_for_malicious_content(body)
+#         except Exception as e:
+#             return JsonResponse({'error': f'Error Occured During Validation: {e}'}, status=404)
+
+#         answer = Answer.objects.create(user=request.user, question=question, body=body)
+#         return JsonResponse({'message': 'Answer created successfully', 'answer_id': answer.id}, status=201)
+
+@method_decorator(csrf_exempt, name="dispatch")
+@method_decorator(ratelimit(key='user', rate='20/h', method='POST', block=True), name='dispatch')
+class CommentOnAnswerView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @reversion.create_revision()
+    def post(self, request, pk, *args, **kwargs):
+        answer = get_object_or_404(Answer, pk=pk)
+        question = answer.question
+        data = json.loads(request.body)
+        content = data.get('content')
+
+        if not content:
+            return JsonResponse({'error': 'Comment content is required'}, status=400)
+        
+        try:
+            if content:
+                validate_no_contact_info(content,user=request.user)
+                validate_for_malicious_content(content)
+        except Exception as e:
+            return JsonResponse({'error': f'Error Occured During Validation: {e}'}, status=404)
+
+        comment = Comment.objects.create(user=request.user, question=question, answer=answer, content=content)
+        
+        # Increase reputation for commenting
+        profile = get_object_or_404(Profile, user=request.user)
+        profile.reputation += 5  # Reward for commenting
+        profile.save()
+
+
+        return JsonResponse({'message': 'Comment created successfully', 'comment_id': comment.id}, status=201)
+
+# @method_decorator(csrf_exempt, name="dispatch")
+# class AcceptAnswerView(APIView):
+#     permission_classes = [IsAuthenticated]
+#     def post(self, request, pk, *args, **kwargs):
+#         answer = get_object_or_404(Answer, pk=pk)
+#         question = answer.question
+
+#         if request.user != question.user:
+#             return JsonResponse({'error': 'Only the question author can accept an answer'}, status=403)
+
+#         question.answers.update(is_accepted=False)
+#         answer.is_accepted = True
+#         answer.save()
+
+#         return JsonResponse({'message': 'Answer accepted successfully'}, status=200)
+
+    
+# class UpvoteAnswerView(APIView):
+#     permission_classes = [IsAuthenticated]
+
+#     @method_decorator(csrf_exempt)
+#     @method_decorator(ratelimit(key='user', rate='30/h', method='POST', block=True))
+#     def post(self, request, pk, *args, **kwargs):
+#         user = request.user
+#         answer = get_object_or_404(Answer, pk=pk)
+
+#         if answer.user == user:
+#             return JsonResponse({'message': 'You cannot upvote your own answer'}, status=400)
+
+#         existing_vote = Vote.objects.filter(user=user, answer=answer).first()
+
+#         if existing_vote:
+#             if existing_vote.vote_type == 'UPVOTE':
+#                 return JsonResponse({'message': 'Already upvoted'}, status=400)
+#             elif existing_vote.vote_type == 'DOWNVOTE':
+#                 answer.downvotes -= 1
+#                 answer.upvotes += 1
+#                 existing_vote.vote_type = 'UPVOTE'
+#                 existing_vote.save()
+#                 answer.save()
+#                 return JsonResponse({'message': 'Vote updated successfully', 'upvotes': answer.upvotes, 'downvotes': answer.downvotes}, status=200)
+        
+#         Vote.objects.create(user=user, answer=answer, vote_type='UPVOTE')
+#         answer.upvotes += 1
+#         answer.save()
+
+#         return JsonResponse({'message': 'Answer upvoted successfully', 'upvotes': answer.upvotes}, status=200)
+
+
+# class DownvoteAnswerView(APIView):
+#     permission_classes = [IsAuthenticated]
+
+#     @method_decorator(csrf_exempt)
+#     @method_decorator(ratelimit(key='user', rate='30/h', method='POST', block=True))
+#     def post(self, request, pk, *args, **kwargs):
+#         user = request.user
+#         answer = get_object_or_404(Answer, pk=pk)
+
+#         if answer.user == user:
+#             return JsonResponse({'message': 'You cannot downvote your own answer'}, status=400)
+
+#         existing_vote = Vote.objects.filter(user=user, answer=answer).first()
+
+#         if existing_vote:
+#             if existing_vote.vote_type == 'DOWNVOTE':
+#                 return JsonResponse({'message': 'Already downvoted'}, status=400)
+#             elif existing_vote.vote_type == 'UPVOTE':
+#                 answer.upvotes -= 1
+#                 answer.downvotes += 1
+#                 existing_vote.vote_type = 'DOWNVOTE'
+#                 existing_vote.save()
+#                 answer.save()
+#                 return JsonResponse({'message': 'Vote updated successfully', 'upvotes': answer.upvotes, 'downvotes': answer.downvotes}, status=200)
+        
+#         Vote.objects.create(user=user, answer=answer, vote_type='DOWNVOTE')
+#         answer.downvotes += 1
+#         answer.save()
+
+#         return JsonResponse({'message': 'Answer downvoted successfully', 'downvotes': answer.downvotes}, status=200)
+    
+
+class UpvoteQuestionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @method_decorator(csrf_exempt)
+    @method_decorator(ratelimit(key='user', rate='30/h', method='POST', block=True))
+    def post(self, request, pk, *args, **kwargs):
+        user = request.user
+        question = get_object_or_404(Question, pk=pk)
+
+        if question.user == user:
+            return JsonResponse({'message': 'You cannot upvote your own question'}, status=400)
+
+        # existing_vote = Vote.objects.filter(user=user, question=question).first()
+
+        # if existing_vote:
+        #     if existing_vote.vote_type == 'UPVOTE':
+        #         return JsonResponse({'message': 'Already upvoted'}, status=400)
+        #     elif existing_vote.vote_type == 'DOWNVOTE':
+        #         question.downvotes -= 1
+        #         question.upvotes += 1
+        #         existing_vote.vote_type = 'UPVOTE'
+        #         existing_vote.save()
+        #         question.save()
+        #         return JsonResponse({'message': 'Vote updated successfully', 'upvotes': question.upvotes, 'downvotes': question.downvotes}, status=200)
+        
+        # Vote.objects.create(user=user, question=question, vote_type='UPVOTE')
+        # question.upvotes += 1
+        # question.save()
+
+
+        existing_vote = Vote.objects.filter(user=user, question=question).first()
+
+        if existing_vote:
+            if existing_vote.vote_type == 'UPVOTE':
+                return JsonResponse({'message': 'Already upvoted'}, status=400)
+            elif existing_vote.vote_type == 'DOWNVOTE':
+                question.downvotes -= 1
+                question.upvotes += 1
+                existing_vote.vote_type = 'UPVOTE'
+                existing_vote.save()
+                question.save()
+
+                # Adjust reputation
+                profile_question = get_object_or_404(Profile, user=question.user)
+                profile_question.reputation += 7
+                profile_question.save()
+
+                profile_user = get_object_or_404(Profile, user=user)
+                profile_user.reputation += 1  # Small reward for the upvoter
+                profile_user.save()
+
+                return JsonResponse({'message': 'Vote updated successfully', 'upvotes': question.upvotes, 'downvotes': question.downvotes}, status=200)
+
+        Vote.objects.create(user=user, question=question, vote_type='UPVOTE')
+        question.upvotes += 1
+        question.save()
+
+        # Adjust reputation for the first upvote
+        profile_question = get_object_or_404(Profile, user=question.user)
+        profile_question.reputation += 5
+        profile_question.save()
+
+        profile_user = get_object_or_404(Profile, user=user)
+        profile_user.reputation += 1  # Small reward for the upvoter
+        profile_user.save()
+
+        return JsonResponse({'message': 'Question upvoted successfully', 'upvotes': question.upvotes}, status=200)
+    
+class DownvoteQuestionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @method_decorator(csrf_exempt)
+    @method_decorator(ratelimit(key='user', rate='30/h', method='POST', block=True))
+    def post(self, request, pk, *args, **kwargs):
+        user = request.user
+        question = get_object_or_404(Question, pk=pk)
+
+        if question.user == user:
+            return JsonResponse({'message': 'You cannot downvote your own question'}, status=400)
+
+        # existing_vote = Vote.objects.filter(user=user, question=question).first()
+
+        # if existing_vote:
+        #     if existing_vote.vote_type == 'DOWNVOTE':
+        #         return JsonResponse({'message': 'Already downvoted'}, status=400)
+        #     elif existing_vote.vote_type == 'UPVOTE':
+        #         question.upvotes -= 1
+        #         question.downvotes += 1
+        #         existing_vote.vote_type = 'DOWNVOTE'
+        #         existing_vote.save()
+        #         question.save()
+        #         return JsonResponse({'message': 'Vote updated successfully', 'upvotes': question.upvotes, 'downvotes': question.downvotes}, status=200)
+        
+        # Vote.objects.create(user=user, question=question, vote_type='DOWNVOTE')
+        # question.downvotes += 1
+        # question.save()
+
+
+        existing_vote = Vote.objects.filter(user=user, question=question).first()
+
+        if existing_vote:
+            if existing_vote.vote_type == 'DOWNVOTE':
+                return JsonResponse({'message': 'Already downvoted'}, status=400)
+            elif existing_vote.vote_type == 'UPVOTE':
+                question.upvotes -= 1
+                question.downvotes += 1
+                existing_vote.vote_type = 'DOWNVOTE'
+                existing_vote.save()
+                question.save()
+
+                # Adjust reputation
+                profile_question = get_object_or_404(Profile, user=question.user)
+                profile_question.reputation -= 5
+                profile_question.save()
+
+                profile_user = get_object_or_404(Profile, user=user)
+                profile_user.reputation -= 1  # Penalty for downvoting
+                profile_user.save()
+
+                return JsonResponse({'message': 'Vote updated successfully', 'upvotes': question.upvotes, 'downvotes': question.downvotes}, status=200)
+
+        Vote.objects.create(user=user, question=question, vote_type='DOWNVOTE')
+        question.downvotes += 1
+        question.save()
+
+        # Adjust reputation for the first downvote
+        profile_question = get_object_or_404(Profile, user=question.user)
+        profile_question.reputation -= 2
+        profile_question.save()
+
+        profile_user = get_object_or_404(Profile, user=user)
+        profile_user.reputation -= 1  # Penalty for downvoting
+        profile_user.save()
+
+        return JsonResponse({'message': 'Question downvoted successfully', 'downvotes': question.downvotes}, status=200)
+    
+class UpvoteCommentView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @method_decorator(csrf_exempt)
+    @method_decorator(ratelimit(key='user', rate='30/h', method='POST', block=True))
+    def post(self, request, pk, *args, **kwargs):
+        user = request.user
+        comment = get_object_or_404(Comment, pk=pk)
+
+        if comment.user == user:
+            return JsonResponse({'message': 'You cannot upvote your own comment'}, status=400)
+
+        # existing_vote = Vote.objects.filter(user=user, comment=comment).first()
+
+        # if existing_vote:
+        #     if existing_vote.vote_type == 'UPVOTE':
+        #         return JsonResponse({'message': 'Already upvoted'}, status=400)
+        #     elif existing_vote.vote_type == 'DOWNVOTE':
+        #         comment.downvotes -= 1
+        #         comment.upvotes += 1
+        #         existing_vote.vote_type = 'UPVOTE'
+        #         existing_vote.save()
+        #         comment.save()
+        #         return JsonResponse({'message': 'Vote updated successfully', 'upvotes': comment.upvotes, 'downvotes': comment.downvotes}, status=200)
+        
+        # Vote.objects.create(user=user, comment=comment, vote_type='UPVOTE')
+        # comment.upvotes += 1
+        # comment.save()
+
+        existing_vote = Vote.objects.filter(user=user, comment=comment).first()
+
+        if existing_vote:
+            if existing_vote.vote_type == 'UPVOTE':
+                return JsonResponse({'message': 'Already upvoted'}, status=400)
+            elif existing_vote.vote_type == 'DOWNVOTE':
+                comment.downvotes -= 1
+                comment.upvotes += 1
+                existing_vote.vote_type = 'UPVOTE'
+                existing_vote.save()
+                comment.save()
+
+                # Adjust reputation
+                profile_comment = get_object_or_404(Profile, user=comment.user)
+                profile_comment.reputation += 3
+                profile_comment.save()
+
+                profile_user = get_object_or_404(Profile, user=user)
+                profile_user.reputation += 1  # Small reward for the upvoter
+                profile_user.save()
+
+                return JsonResponse({'message': 'Vote updated successfully', 'upvotes': comment.upvotes, 'downvotes': comment.downvotes}, status=200)
+
+        Vote.objects.create(user=user, comment=comment, vote_type='UPVOTE')
+        comment.upvotes += 1
+        comment.save()
+
+        # Adjust reputation for the first upvote
+        profile_comment = get_object_or_404(Profile, user=comment.user)
+        profile_comment.reputation += 3
+        profile_comment.save()
+
+        profile_user = get_object_or_404(Profile, user=user)
+        profile_user.reputation += 1  # Small reward for the upvoter
+        profile_user.save()
+
+        return JsonResponse({'message': 'Comment upvoted successfully', 'upvotes': comment.upvotes}, status=200)
+    
+class DownvoteCommentView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @method_decorator(csrf_exempt)
+    @method_decorator(ratelimit(key='user', rate='30/h', method='POST', block=True))
+    def post(self, request, pk, *args, **kwargs):
+        user = request.user
+        comment = get_object_or_404(Comment, pk=pk)
+
+        if comment.user == user:
+            return JsonResponse({'message': 'You cannot downvote your own comment'}, status=400)
+
+        # existing_vote = Vote.objects.filter(user=user, comment=comment).first()
+
+        # if existing_vote:
+        #     if existing_vote.vote_type == 'DOWNVOTE':
+        #         return JsonResponse({'message': 'Already downvoted'}, status=400)
+        #     elif existing_vote.vote_type == 'UPVOTE':
+        #         comment.upvotes -= 1
+        #         comment.downvotes += 1
+        #         existing_vote.vote_type = 'DOWNVOTE'
+        #         existing_vote.save()
+        #         comment.save()
+        #         return JsonResponse({'message': 'Vote updated successfully', 'upvotes': comment.upvotes, 'downvotes': comment.downvotes}, status=200)
+        
+        # Vote.objects.create(user=user, comment=comment, vote_type='DOWNVOTE')
+        # comment.downvotes += 1
+        # comment.save()
+
+        existing_vote = Vote.objects.filter(user=user, comment=comment).first()
+
+        if existing_vote:
+            if existing_vote.vote_type == 'DOWNVOTE':
+                return JsonResponse({'message': 'Already downvoted'}, status=400)
+            elif existing_vote.vote_type == 'UPVOTE':
+                comment.upvotes -= 1
+                comment.downvotes += 1
+                existing_vote.vote_type = 'DOWNVOTE'
+                existing_vote.save()
+                comment.save()
+
+                # Adjust reputation
+                profile_comment = get_object_or_404(Profile, user=comment.user)
+                profile_comment.reputation -= 3
+                profile_comment.save()
+
+                profile_user = get_object_or_404(Profile, user=user)
+                profile_user.reputation -= 1  # Penalty for downvoting
+                profile_user.save()
+
+                return JsonResponse({'message': 'Vote updated successfully', 'upvotes': comment.upvotes, 'downvotes': comment.downvotes}, status=200)
+
+        Vote.objects.create(user=user, comment=comment, vote_type='DOWNVOTE')
+        comment.downvotes += 1
+        comment.save()
+
+        # Adjust reputation for the first downvote
+        profile_comment = get_object_or_404(Profile, user=comment.user)
+        profile_comment.reputation -= 2
+        profile_comment.save()
+
+        profile_user = get_object_or_404(Profile, user=user)
+        profile_user.reputation -= 1  # Penalty for downvoting
+        profile_user.save()
+
+        return JsonResponse({'message': 'Comment downvoted successfully', 'downvotes': comment.downvotes}, status=200)
+
+
+
+# class FlagContentView(APIView):
+#     permission_classes = [IsAuthenticated]  # Only authenticated users can flag content
+
+#     def post(self, request, *args, **kwargs):
+#         question_id = request.data.get('question_id')
+#         answer_id = request.data.get('answer_id')
+#         comment_id = request.data.get('comment_id')
+        
+#         # Ensure at least one content identifier is provided
+#         if not question_id and not answer_id and not comment_id:
+#             return JsonResponse({"error": "At least one of question_id, answer_id, or comment_id must be provided."}, status=status.HTTP_400_BAD_REQUEST)
+
+#         flag_data = {
+#             'user': request.user.id,
+#             'reason': request.data.get('reason'),
+#             'description': request.data.get('description', '')
+#         }
+        
+#         # Associate the appropriate content with the flag
+#         if question_id:
+#             try:
+#                 flag_data['question'] = Question.objects.get(id=question_id).id
+#             except Question.DoesNotExist:
+#                 return JsonResponse({"error": "Question not found."}, status=status.HTTP_404_NOT_FOUND)
+        
+#         if answer_id:
+#             try:
+#                 flag_data['answer'] = Answer.objects.get(id=answer_id).id
+#             except Answer.DoesNotExist:
+#                 return JsonResponse({"error": "Answer not found."}, status=status.HTTP_404_NOT_FOUND)
+        
+#         if comment_id:
+#             try:
+#                 flag_data['comment'] = Comment.objects.get(id=comment_id).id
+#             except Comment.DoesNotExist:
+#                 return JsonResponse({"error": "Comment not found."}, status=status.HTTP_404_NOT_FOUND)
+        
+#         # Serialize the flag data
+#         serializer = FlagSerializer(data=flag_data)
+        
+#         if serializer.is_valid():
+#             serializer.save()
+#             return JsonResponse(serializer.data, status=status.HTTP_201_CREATED)
+#         return JsonResponse(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+
+class FlagContentView(APIView):
+    permission_classes = [IsAuthenticated]  # Only authenticated users can flag content
+
+    def post(self, request, *args, **kwargs):
+        question_id = request.data.get('question_id')
+        answer_id = request.data.get('answer_id')
+        comment_id = request.data.get('comment_id')
+        reason = request.data.get('reason')
+        description = request.data.get('description', '')
+
+        # Ensure at least one content identifier is provided
+        if not question_id and not answer_id and not comment_id:
+            return JsonResponse({"error": "At least one of question_id, answer_id, or comment_id must be provided."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Initialize flag data
+        flag_data = {
+            'user': request.user.id,
+            'reason': reason,
+            'description': description
+        }
+
+        flagged_content = None
+        flagged_user = None
+
+        # Associate the appropriate content with the flag
+        if question_id:
+            try:
+                existing_flag = Flag.objects.filter(user=request.user, question_id=question_id).exists()
+                if existing_flag:
+                    return JsonResponse({"error": "You have already flagged this question."}, status=status.HTTP_400_BAD_REQUEST)
+                flagged_content = Question.objects.get(id=question_id)
+                flag_data['question'] = flagged_content.id
+                flagged_user = flagged_content.user
+            except Question.DoesNotExist:
+                return JsonResponse({"error": "Question not found."}, status=status.HTTP_404_NOT_FOUND)
+        
+        if answer_id:
+            try:
+                existing_flag = Flag.objects.filter(user=request.user, answer_id=answer_id).exists()
+                if existing_flag:
+                    return JsonResponse({"error": "You have already flagged this answer."}, status=status.HTTP_400_BAD_REQUEST)
+                flagged_content = Answer.objects.get(id=answer_id)
+                flag_data['answer'] = flagged_content.id
+                flagged_user = flagged_content.user
+            except Answer.DoesNotExist:
+                return JsonResponse({"error": "Answer not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if comment_id:
+            try:
+                existing_flag = Flag.objects.filter(user=request.user, comment_id=comment_id).exists()
+                if existing_flag:
+                    return JsonResponse({"error": "You have already flagged this comment."}, status=status.HTTP_400_BAD_REQUEST)
+                flagged_content = Comment.objects.get(id=comment_id)
+                flag_data['comment'] = flagged_content.id
+                flagged_user = flagged_content.user
+            except Comment.DoesNotExist:
+                return JsonResponse({"error": "Comment not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Serialize the flag data
+        serializer = FlagSerializer(data=flag_data)
+        
+        if serializer.is_valid():
+            serializer.save()
+
+            # Track flags for the flagged user and apply reputation penalty
+            flag_count = Flag.objects.filter(Q(question=flagged_content) | Q(answer=flagged_content) | Q(comment=flagged_content)).count()
+            
+            # Check if the flagged content has reached the penalty threshold
+            if flag_count >= 6:  # Threshold for reputation penalty
+                profile = get_object_or_404(Profile, user=flagged_user)
+                profile.reputation -= 100  # Apply reputation penalty
+                profile.reputation = max(1, profile.reputation)  # Ensure reputation doesn't drop below 1
+                profile.save()
+                # flagged_user.profile.reputation -= 100  # Apply reputation penalty
+                # flagged_user.profile.reputation = max(1, flagged_user.profile.reputation)  # Ensure reputation doesn't drop below 1
+                # flagged_user.profile.save()
+
+            return JsonResponse(serializer.data, status=status.HTTP_201_CREATED)
+
+        return JsonResponse(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ================================= NEW API's WITH REPUTATION ADDED ===================================================================
+
+
+
+#======================= Answer BLOCK ===================================================================================================
+
 @method_decorator(csrf_exempt, name="dispatch")
 @method_decorator(ratelimit(key='user', rate='15/h', method='POST', block=True), name='dispatch')
 class AnswerQuestionView(APIView):
@@ -381,36 +936,21 @@ class AnswerQuestionView(APIView):
             return JsonResponse({'error': f'Error Occured During Validation: {e}'}, status=404)
 
         answer = Answer.objects.create(user=request.user, question=question, body=body)
+        
+
+        # # Increase reputation for answering the question
+        # profile = get_object_or_404(Profile, user=request.user)
+        # profile.reputation += 10
+        # profile.save()
+
+
         return JsonResponse({'message': 'Answer created successfully', 'answer_id': answer.id}, status=201)
 
-@method_decorator(csrf_exempt, name="dispatch")
-@method_decorator(ratelimit(key='user', rate='20/h', method='POST', block=True), name='dispatch')
-class CommentOnAnswerView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    @reversion.create_revision()
-    def post(self, request, pk, *args, **kwargs):
-        answer = get_object_or_404(Answer, pk=pk)
-        question = answer.question
-        data = json.loads(request.body)
-        content = data.get('content')
-
-        if not content:
-            return JsonResponse({'error': 'Comment content is required'}, status=400)
-        
-        try:
-            if content:
-                validate_no_contact_info(content,user=request.user)
-                validate_for_malicious_content(content)
-        except Exception as e:
-            return JsonResponse({'error': f'Error Occured During Validation: {e}'}, status=404)
-
-        comment = Comment.objects.create(user=request.user, question=question, answer=answer, content=content)
-        return JsonResponse({'message': 'Comment created successfully', 'comment_id': comment.id}, status=201)
 
 @method_decorator(csrf_exempt, name="dispatch")
 class AcceptAnswerView(APIView):
     permission_classes = [IsAuthenticated]
+
     def post(self, request, pk, *args, **kwargs):
         answer = get_object_or_404(Answer, pk=pk)
         question = answer.question
@@ -422,43 +962,14 @@ class AcceptAnswerView(APIView):
         answer.is_accepted = True
         answer.save()
 
+        # Increase reputation for accepted answer
+        profile = get_object_or_404(Profile, user=answer.user)
+        profile.reputation += 15
+        profile.save()
+
         return JsonResponse({'message': 'Answer accepted successfully'}, status=200)
 
-# @method_decorator(csrf_exempt, name="dispatch")
-# @method_decorator(ratelimit(key='user', rate='30/h', method='POST', block=True), name='dispatch')
-# class UpvoteAnswerView(APIView):
-#     permission_classes = [IsAuthenticated]
-#     def post(self, request, pk, *args, **kwargs):
-#         user = request.user
-#         answer = get_object_or_404(Answer, pk=pk)
-#         answer_user = answer.user
 
-#         if answer.user == user:
-#             return JsonResponse({'message': 'You cannot upvote your own Answer'}, status=400)
-
-
-#         answer.upvotes += 1
-#         answer.save()
-
-#         return JsonResponse({'message': 'Answer upvoted successfully', 'upvotes': answer.upvotes}, status=200)
-
-# @method_decorator(csrf_exempt, name="dispatch")
-# @method_decorator(ratelimit(key='user', rate='30/h', method='POST', block=True), name='dispatch')
-# class DownvoteAnswerView(APIView):
-#     permission_classes = [IsAuthenticated]
-#     def post(self, request, pk, *args, **kwargs):
-#         user = request.user
-#         answer = get_object_or_404(Answer, pk=pk)
-#         answer_user = answer.user
-
-#         if answer.user == user:
-#             return JsonResponse({'message': 'You cannot downvoted your own Answer'}, status=400)
-        
-#         answer.downvotes += 1
-#         answer.save()
-
-#         return JsonResponse({'message': 'Answer downvoted successfully', 'downvotes': answer.downvotes}, status=200)
-    
 class UpvoteAnswerView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -482,11 +993,44 @@ class UpvoteAnswerView(APIView):
                 existing_vote.vote_type = 'UPVOTE'
                 existing_vote.save()
                 answer.save()
+
+                # # Adjust reputation
+                # answer.user.reputation += 7
+                # user.reputation += 1  # Small reward for the upvoter
+                # answer.user.save()
+                # user.save()
+
+
+                # Adjust reputation
+                profile_answer = get_object_or_404(Profile, user=answer.user)
+                profile_answer.reputation += 5
+                profile_answer.save()
+
+                profile_user = get_object_or_404(Profile, user=user)
+                profile_user.reputation += 1  # Small reward for the upvoter
+                profile_user.save()
+
                 return JsonResponse({'message': 'Vote updated successfully', 'upvotes': answer.upvotes, 'downvotes': answer.downvotes}, status=200)
-        
+
         Vote.objects.create(user=user, answer=answer, vote_type='UPVOTE')
         answer.upvotes += 1
         answer.save()
+
+        # # Adjust reputation for the first upvote
+        # answer.user.reputation += 5
+        # user.reputation += 1  # Small reward for the upvoter
+        # answer.user.save()
+        # user.save()
+
+
+        # Adjust reputation for the first upvote
+        profile_answer = get_object_or_404(Profile, user=answer.user)
+        profile_answer.reputation += 5
+        profile_answer.save()
+
+        profile_user = get_object_or_404(Profile, user=user)
+        profile_user.reputation += 1  # Small reward for the upvoter
+        profile_user.save()
 
         return JsonResponse({'message': 'Answer upvoted successfully', 'upvotes': answer.upvotes}, status=200)
 
@@ -514,182 +1058,45 @@ class DownvoteAnswerView(APIView):
                 existing_vote.vote_type = 'DOWNVOTE'
                 existing_vote.save()
                 answer.save()
+
+                # # Adjust reputation
+                # answer.user.reputation -= 5
+                # user.reputation -= 1  # Penalty for downvoting
+                # answer.user.save()
+                # user.save()
+
+
+                # Adjust reputation
+                profile_answer = get_object_or_404(Profile, user=answer.user)
+                profile_answer.reputation -= 5
+                profile_answer.save()
+
+                profile_user = get_object_or_404(Profile, user=user)
+                profile_user.reputation -= 1  # Penalty for downvoting
+                profile_user.save()
+
                 return JsonResponse({'message': 'Vote updated successfully', 'upvotes': answer.upvotes, 'downvotes': answer.downvotes}, status=200)
-        
+
         Vote.objects.create(user=user, answer=answer, vote_type='DOWNVOTE')
         answer.downvotes += 1
         answer.save()
 
+        # # Adjust reputation for the first downvote
+        # answer.user.reputation -= 2
+        # user.reputation -= 1  # Penalty for downvoting
+        # answer.user.save()
+        # user.save()
+
+        # Adjust reputation for the first downvote
+        profile_answer = get_object_or_404(Profile, user=answer.user)
+        profile_answer.reputation -= 2
+        profile_answer.save()
+
+        profile_user = get_object_or_404(Profile, user=user)
+        profile_user.reputation -= 1  # Penalty for downvoting
+        profile_user.save()
+
         return JsonResponse({'message': 'Answer downvoted successfully', 'downvotes': answer.downvotes}, status=200)
-    
 
-class UpvoteQuestionView(APIView):
-    permission_classes = [IsAuthenticated]
+#======================= Answer BLOCK ===================================================================================================
 
-    @method_decorator(csrf_exempt)
-    @method_decorator(ratelimit(key='user', rate='30/h', method='POST', block=True))
-    def post(self, request, pk, *args, **kwargs):
-        user = request.user
-        question = get_object_or_404(Question, pk=pk)
-
-        if question.user == user:
-            return JsonResponse({'message': 'You cannot upvote your own question'}, status=400)
-
-        existing_vote = Vote.objects.filter(user=user, question=question).first()
-
-        if existing_vote:
-            if existing_vote.vote_type == 'UPVOTE':
-                return JsonResponse({'message': 'Already upvoted'}, status=400)
-            elif existing_vote.vote_type == 'DOWNVOTE':
-                question.downvotes -= 1
-                question.upvotes += 1
-                existing_vote.vote_type = 'UPVOTE'
-                existing_vote.save()
-                question.save()
-                return JsonResponse({'message': 'Vote updated successfully', 'upvotes': question.upvotes, 'downvotes': question.downvotes}, status=200)
-        
-        Vote.objects.create(user=user, question=question, vote_type='UPVOTE')
-        question.upvotes += 1
-        question.save()
-
-        return JsonResponse({'message': 'Question upvoted successfully', 'upvotes': question.upvotes}, status=200)
-    
-class DownvoteQuestionView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    @method_decorator(csrf_exempt)
-    @method_decorator(ratelimit(key='user', rate='30/h', method='POST', block=True))
-    def post(self, request, pk, *args, **kwargs):
-        user = request.user
-        question = get_object_or_404(Question, pk=pk)
-
-        if question.user == user:
-            return JsonResponse({'message': 'You cannot downvote your own question'}, status=400)
-
-        existing_vote = Vote.objects.filter(user=user, question=question).first()
-
-        if existing_vote:
-            if existing_vote.vote_type == 'DOWNVOTE':
-                return JsonResponse({'message': 'Already downvoted'}, status=400)
-            elif existing_vote.vote_type == 'UPVOTE':
-                question.upvotes -= 1
-                question.downvotes += 1
-                existing_vote.vote_type = 'DOWNVOTE'
-                existing_vote.save()
-                question.save()
-                return JsonResponse({'message': 'Vote updated successfully', 'upvotes': question.upvotes, 'downvotes': question.downvotes}, status=200)
-        
-        Vote.objects.create(user=user, question=question, vote_type='DOWNVOTE')
-        question.downvotes += 1
-        question.save()
-
-        return JsonResponse({'message': 'Question downvoted successfully', 'downvotes': question.downvotes}, status=200)
-    
-class UpvoteCommentView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    @method_decorator(csrf_exempt)
-    @method_decorator(ratelimit(key='user', rate='30/h', method='POST', block=True))
-    def post(self, request, pk, *args, **kwargs):
-        user = request.user
-        comment = get_object_or_404(Comment, pk=pk)
-
-        if comment.user == user:
-            return JsonResponse({'message': 'You cannot upvote your own comment'}, status=400)
-
-        existing_vote = Vote.objects.filter(user=user, comment=comment).first()
-
-        if existing_vote:
-            if existing_vote.vote_type == 'UPVOTE':
-                return JsonResponse({'message': 'Already upvoted'}, status=400)
-            elif existing_vote.vote_type == 'DOWNVOTE':
-                comment.downvotes -= 1
-                comment.upvotes += 1
-                existing_vote.vote_type = 'UPVOTE'
-                existing_vote.save()
-                comment.save()
-                return JsonResponse({'message': 'Vote updated successfully', 'upvotes': comment.upvotes, 'downvotes': comment.downvotes}, status=200)
-        
-        Vote.objects.create(user=user, comment=comment, vote_type='UPVOTE')
-        comment.upvotes += 1
-        comment.save()
-
-        return JsonResponse({'message': 'Comment upvoted successfully', 'upvotes': comment.upvotes}, status=200)
-    
-class DownvoteCommentView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    @method_decorator(csrf_exempt)
-    @method_decorator(ratelimit(key='user', rate='30/h', method='POST', block=True))
-    def post(self, request, pk, *args, **kwargs):
-        user = request.user
-        comment = get_object_or_404(Comment, pk=pk)
-
-        if comment.user == user:
-            return JsonResponse({'message': 'You cannot downvote your own comment'}, status=400)
-
-        existing_vote = Vote.objects.filter(user=user, comment=comment).first()
-
-        if existing_vote:
-            if existing_vote.vote_type == 'DOWNVOTE':
-                return JsonResponse({'message': 'Already downvoted'}, status=400)
-            elif existing_vote.vote_type == 'UPVOTE':
-                comment.upvotes -= 1
-                comment.downvotes += 1
-                existing_vote.vote_type = 'DOWNVOTE'
-                existing_vote.save()
-                comment.save()
-                return JsonResponse({'message': 'Vote updated successfully', 'upvotes': comment.upvotes, 'downvotes': comment.downvotes}, status=200)
-        
-        Vote.objects.create(user=user, comment=comment, vote_type='DOWNVOTE')
-        comment.downvotes += 1
-        comment.save()
-
-        return JsonResponse({'message': 'Comment downvoted successfully', 'downvotes': comment.downvotes}, status=200)
-
-
-
-class FlagContentView(APIView):
-    permission_classes = [IsAuthenticated]  # Only authenticated users can flag content
-
-    def post(self, request, *args, **kwargs):
-        question_id = request.data.get('question_id')
-        answer_id = request.data.get('answer_id')
-        comment_id = request.data.get('comment_id')
-        
-        # Ensure at least one content identifier is provided
-        if not question_id and not answer_id and not comment_id:
-            return JsonResponse({"error": "At least one of question_id, answer_id, or comment_id must be provided."}, status=status.HTTP_400_BAD_REQUEST)
-
-        flag_data = {
-            'user': request.user.id,
-            'reason': request.data.get('reason'),
-            'description': request.data.get('description', '')
-        }
-        
-        # Associate the appropriate content with the flag
-        if question_id:
-            try:
-                flag_data['question'] = Question.objects.get(id=question_id).id
-            except Question.DoesNotExist:
-                return JsonResponse({"error": "Question not found."}, status=status.HTTP_404_NOT_FOUND)
-        
-        if answer_id:
-            try:
-                flag_data['answer'] = Answer.objects.get(id=answer_id).id
-            except Answer.DoesNotExist:
-                return JsonResponse({"error": "Answer not found."}, status=status.HTTP_404_NOT_FOUND)
-        
-        if comment_id:
-            try:
-                flag_data['comment'] = Comment.objects.get(id=comment_id).id
-            except Comment.DoesNotExist:
-                return JsonResponse({"error": "Comment not found."}, status=status.HTTP_404_NOT_FOUND)
-        
-        # Serialize the flag data
-        serializer = FlagSerializer(data=flag_data)
-        
-        if serializer.is_valid():
-            serializer.save()
-            return JsonResponse(serializer.data, status=status.HTTP_201_CREATED)
-        return JsonResponse(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

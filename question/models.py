@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from user.models import Profile
 
 # Create your models here.
 class TimeStampModel(models.Model):
@@ -66,6 +67,7 @@ class Flag(TimeStampModel):
     ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='flags')
+    profile = models.ForeignKey(Profile, on_delete=models.CASCADE, null=True, blank=True, related_name='flags')
     question = models.ForeignKey(Question, on_delete=models.CASCADE, null=True, blank=True, related_name='flags')
     answer = models.ForeignKey(Answer, on_delete=models.CASCADE, null=True, blank=True, related_name='flags')
     comment = models.ForeignKey(Comment, on_delete=models.CASCADE, null=True, blank=True, related_name='flags')
