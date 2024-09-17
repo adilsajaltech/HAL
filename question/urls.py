@@ -7,6 +7,9 @@ from .views import (
     AcceptAnswerView,
     UpvoteAnswerView,
     DownvoteAnswerView,
+    SearchTag,
+    TagsDetailView,
+    FilterQuestionsView,
     GetQuestionVersionView,
     UpdateQuestionView,
     GetAllQuestionVersionsView,
@@ -29,7 +32,10 @@ from .views import (
 
 urlpatterns = [
     path('question-create/', CreateQuestionView.as_view(), name='create-question'),
-    path('questions/<int:pk>/', QuestionDetailView.as_view(), name='view-question'),
+    path('questions/', QuestionDetailView.as_view(), name='view-question'),
+    path('filterquestions/', FilterQuestionsView.as_view(), name='filter-question'),
+    path('search-tag/', SearchTag.as_view(), name='view-tags'),
+    path('TagsDetail/', TagsDetailView.as_view(), name='tags-detail'),
     path('questions/<int:pk>/answers/', AnswerQuestionView.as_view(), name='answer-question'),
     path('answers/<int:pk>/comments/', CommentOnAnswerView.as_view(), name='comment-on-answer'),
     path('answers/<int:pk>/accept/', AcceptAnswerView.as_view(), name='accept-answer'),

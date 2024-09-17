@@ -42,7 +42,8 @@ INSTALLED_APPS = [
     'question',
     'rest_framework',
     'rest_framework_simplejwt',
-    'reversion'
+    'reversion',
+    'django_elasticsearch_dsl'
 ]
 
 MIDDLEWARE = [
@@ -157,3 +158,9 @@ REST_FRAMEWORK = {
 }
 
 APPEND_SLASH = True
+
+ELASTICSEARCH_DSL = {
+    'default': {
+        'hosts': 'http://localhost:9200'  # Elasticsearch host
+    },
+}
