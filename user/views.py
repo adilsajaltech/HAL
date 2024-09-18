@@ -65,4 +65,5 @@ class ProfileView(APIView):
             'email': request.user.email,
             'mobile_number': profile.mobile_number,
             'city': profile.city,
+            'reputation': profile.reputation
         })
