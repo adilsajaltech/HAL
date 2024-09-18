@@ -9,8 +9,6 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from rest_framework.views import APIView
 from rest_framework import status
-from .documents import QuestionDocument, AnswerDocument, CommentDocument, TagDocument
-from .utils import search_tags
 import reversion
 from reversion.models import Version
 from .content_management.serializer import FlagSerializer, QuestionSerializer, AnswerSerializer, CommentSerializer
@@ -18,6 +16,7 @@ from .content_management.validators import validate_no_contact_info, validate_fo
 from django_ratelimit.decorators import ratelimit
 from django.db.models import Q
 from user.models import Profile
+from .documents import QuestionDocument, AnswerDocument, CommentDocument, TagDocument
 
 # Define the rate limit handler
 def handle_ratelimit(request, exception):
@@ -127,20 +126,16 @@ class UpdateQuestionView(APIView):
         return JsonResponse({'message': 'Question updated successfully'}, status=200)
 
 class GetQuestionVersionView(APIView):
+    """Get the version of the question with the help of question id and version id"""
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk, vid, *args, **kwargs):
-        # Fetch the question object
         question = get_object_or_404(Question, pk=pk)
-        
-        # Retrieve the specific version
         try:
-            # Fetch version data for the specific question and version_id
-            version = reversion.get_for_object(question).get(id=vid)
+            version = Version.objects.get(id=vid,object_id=question.pk)
         except reversion.Version.DoesNotExist:
             return JsonResponse({'error': 'Version not found'}, status=404)
 
-        # Format the version data
         question_data = {
             'id': version.object_id,
             'title': version.field_dict.get('title'),
@@ -237,6 +232,7 @@ class GetAllCommentVersionsView(APIView):
 
 @method_decorator(csrf_exempt, name='dispatch')
 class UpdateAnswerView(APIView):
+    """Update the answer"""
     permission_classes = [IsAuthenticated]
 
     @reversion.create_revision()
@@ -270,6 +266,7 @@ class UpdateAnswerView(APIView):
     
 @method_decorator(csrf_exempt, name='dispatch')
 class UpdateCommentView(APIView):
+    """Update the comment created question or answer"""
     permission_classes = [IsAuthenticated]
 
     @reversion.create_revision()
@@ -278,16 +275,16 @@ class UpdateCommentView(APIView):
             return JsonResponse({'error': 'User must be logged in to update a comment'}, status=403)
         
         data = json.loads(request.body)
-        body = data.get('body')
+        body = data.get('comment')
 
         if body is None:
-            return JsonResponse({'error': 'Body are required'}, status=400)
+            return JsonResponse({'error': 'comment are required'}, status=400)
 
         comment = get_object_or_404(Comment, pk=pk)
 
         # Ensure that only the author can update the question
         if comment.user != request.user:
-            return JsonResponse({'error': 'You are not authorized to update this comment'}, status=403)
+            return JsonResponse({'error': 'You are not authorized person to update this comment'}, status=403)
         try:
             if body:
                 validate_no_contact_info(body,user=request.user)
@@ -368,7 +365,6 @@ class QuestionDetailView(APIView):
         results.save()
         return JsonResponse({'data': response_data}, status=status.HTTP_200_OK)
 
-
 @method_decorator(csrf_exempt, name='dispatch')
 class FilterQuestionsView(APIView):
     permission_classes = [IsAuthenticated]
@@ -435,6 +431,7 @@ class FilterQuestionsView(APIView):
 
         return JsonResponse({'data': final_data}, status=status.HTTP_200_OK)
 
+
 @method_decorator(csrf_exempt, name='dispatch')
 class SearchTag(APIView):
     permission_classes = [IsAuthenticated]
@@ -453,7 +450,14 @@ class SearchTag(APIView):
 
         
         try:
-            results = search_tags(query=query)
+            search = TagDocument.search(index="tags").query(
+                "multi_match",
+                query=query,
+                fields=['name', 'description'],
+                type="best_fields",
+                fuzziness='AUTO'
+            )
+            results = search.execute()
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=500)
 
@@ -484,18 +488,8 @@ class SearchTag(APIView):
         final_data['tags'] = response_data[starting_ : ending_]
         final_data['next_page'] = page + 1 if total_pages >= page + 1 else 1
         
-        
-        
+        return JsonResponse({'data': final_data}, status=200)    
 
-        
-        
-        
-
-        
-        
-        
-
-        return JsonResponse({'data': final_data}, status=200)
 
 @method_decorator(csrf_exempt, name='dispatch')
 class TagsDetailView(APIView):
@@ -546,19 +540,7 @@ class TagsDetailView(APIView):
         final_data['tags'] = response_data[starting_ : ending_]
         final_data['next_page'] = page + 1 if total_pages >= page + 1 else 1
         
-        
-        
-
-        
-        
-        
-
-        
-        
-        
-
         return JsonResponse({'data': final_data}, status=200)
-
 # @method_decorator(csrf_exempt, name="dispatch")
 # @method_decorator(ratelimit(key='user', rate='15/h', method='POST', block=True), name='dispatch')
 # class AnswerQuestionView(APIView):
@@ -589,17 +571,19 @@ class TagsDetailView(APIView):
 @method_decorator(csrf_exempt, name="dispatch")
 @method_decorator(ratelimit(key='user', rate='20/h', method='POST', block=True), name='dispatch')
 class CommentOnAnswerView(APIView):
+    """Create the comment on the answer with the help of ID of the answer"""
     permission_classes = [IsAuthenticated]
 
     @reversion.create_revision()
     def post(self, request, pk, *args, **kwargs):
+        
         answer = get_object_or_404(Answer, pk=pk)
         question = answer.question
         data = json.loads(request.body)
-        content = data.get('content')
+        content = data.get('comment')
 
         if not content:
-            return JsonResponse({'error': 'Comment content is required'}, status=400)
+            return JsonResponse({'error': 'Comment comment is required'}, status=400)
         
         try:
             if content:
@@ -1110,6 +1094,7 @@ class FlagContentView(APIView):
 @method_decorator(csrf_exempt, name="dispatch")
 @method_decorator(ratelimit(key='user', rate='15/h', method='POST', block=True), name='dispatch')
 class AnswerQuestionView(APIView):
+    """Create the answer of the questions"""
     permission_classes = [IsAuthenticated]
 
     @reversion.create_revision()
@@ -1145,6 +1130,7 @@ class AnswerQuestionView(APIView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class AcceptAnswerView(APIView):
+    """accept the answer of the question and this will be unique for every question"""
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk, *args, **kwargs):

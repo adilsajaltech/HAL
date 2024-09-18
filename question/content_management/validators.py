@@ -55,10 +55,10 @@ def validate_for_malicious_content(content):
             raise ValidationError("Content contains cross-site scripting (XSS) patterns.")
 
     # Validate for malicious XML
-    try:
-        ET.fromstring(content)
-    except ET.ParseError:
-        raise ValidationError("Invalid XML content detected.")
+    # try:
+    #     ET.fromstring(content)
+    # except ET.ParseError:
+    #     raise ValidationError("Invalid XML content detected.")
 
 
 # Custom validator for inappropriate content using Guardrails

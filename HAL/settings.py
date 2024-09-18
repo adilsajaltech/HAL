@@ -158,7 +158,6 @@ REST_FRAMEWORK = {
 }
 
 APPEND_SLASH = True
-
 ELASTICSEARCH_DSL = {
     'default': {
         'hosts': 'http://localhost:9200'  # Elasticsearch host
